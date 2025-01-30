@@ -1,7 +1,35 @@
-'256 Color Bitmap Reader add-on, by: Peter Swinkels.
+DECLARE SUB DisplayHelp ()
 DEFINT A-Z
 
-TYPE InformationType
+CONST BITMAPDIMENSIONS = 19
+CONST BITMAPHEADERSIZE = 1078
+CONST BITMAPPALETTE = 55
+CONST VESAVIDEOMODE = &H101
+
+TYPE RegTypeX
+ ax AS INTEGER
+ bx AS INTEGER
+ cx AS INTEGER
+ dx AS INTEGER
+ bp AS INTEGER
+ si AS INTEGER
+ di AS INTEGER
+ flags AS INTEGER
+ ds AS INTEGER
+ es AS INTEGER
+END TYPE
+
+TYPE VBEInformationStr
+ VESASignature AS STRING * 4
+ VESAVersion AS INTEGER
+ OEMStringPTR AS LONG
+ Capabilities AS STRING * 4
+ VideoModePTR AS LONG
+ TotalMemory AS INTEGER
+ Reserved AS STRING * 236
+END TYPE
+
+TYPE VESAInformationStr
  ModeAttributes AS INTEGER
  WinAAttributes AS STRING * 1
  WinBAttributes AS STRING * 1
@@ -34,72 +62,56 @@ TYPE InformationType
  Reserved AS STRING * 216
 END TYPE
 
-TYPE RegTypeX
- ax AS INTEGER
- bx AS INTEGER
- cx AS INTEGER
- dx AS INTEGER
- bp AS INTEGER
- si AS INTEGER
- di AS INTEGER
- flags AS INTEGER
- ds AS INTEGER
- es AS INTEGER
-END TYPE
-
-TYPE VGAInfoType
- VESASignature AS STRING * 4
- VESAVersion AS INTEGER
- OEMStringPTR AS LONG
- Capabilities AS STRING * 4
- VideoModePTR AS LONG
- TotalMemory AS INTEGER
- Reserved AS STRING * 236
-END TYPE
-
-DECLARE FUNCTION OpenBinary (FileName$)
-DECLARE FUNCTION SetVESAMode (VIDEOMODE)
+DECLARE FUNCTION OpenBinary (FileName AS STRING)
+DECLARE FUNCTION SelectBitmap$ ()
+DECLARE FUNCTION SetVESAMode (VideoMode AS INTEGER)
 DECLARE FUNCTION VESAPresent ()
-DECLARE SUB DisplayBitmap (FileH, XOffset, YOffset, ScreenWidth, SCREENHEIGHT, ImageWidth AS LONG, ImageHeight AS LONG)
-DECLARE SUB GetVESAInformation (VIDEOMODE, Information AS InformationType)
+DECLARE SUB DisplayBitmap (FileH AS INTEGER, XOffset AS INTEGER, YOffset AS INTEGER, ScreenWidth AS INTEGER, ScreenHeight AS INTEGER, ImageWidth AS LONG, ImageHeight AS LONG)
+DECLARE SUB DisplayBitmapInformation (FileName AS STRING, ImageWidth AS LONG, ImageHeight AS LONG)
+DECLARE SUB GetVESAInformation (VideoMode AS INTEGER, Information AS VESAInformationStr)
 DECLARE SUB INTERRUPTX (intnum AS INTEGER, inreg AS RegTypeX, outreg AS RegTypeX)
 DECLARE SUB Main ()
 DECLARE SUB ResetVideo ()
-DECLARE SUB SetPalette (FileH)
-DECLARE SUB SetVESABank (Bank)
+DECLARE SUB SetPalette (FileH AS INTEGER)
+DECLARE SUB SetVESABank (Bank AS INTEGER)
 
+ResetVideo
+DisplayHelp
 CALL Main
+END
 
-SUB DisplayBitmap (FileH, XOffset, YOffset, ScreenWidth, SCREENHEIGHT, ImageWidth AS LONG, ImageHeight AS LONG)
-CONST BITMAP = 1078
-CONST DIMENSIONS = 19
-DIM Bank
-DIM CurrentBank
+SUB DisplayBitmap (FileH AS INTEGER, XOffset AS INTEGER, YOffset AS INTEGER, ScreenWidth AS INTEGER, ScreenHeight AS INTEGER, ImageWidth AS LONG, ImageHeight AS LONG)
+DIM Bank AS INTEGER
+DIM CurrentBank AS INTEGER
 DIM Offset AS LONG
 DIM Position AS LONG
-DIM Row$
-DIM x
-DIM y
-STATIC Padding
+DIM Row AS STRING
+DIM x AS INTEGER
+DIM y AS INTEGER
+STATIC Padding AS INTEGER
 
  IF ImageWidth = 0 AND ImageHeight = 0 THEN
-  SEEK FileH, DIMENSIONS
+  SEEK FileH, BITMAPDIMENSIONS
   ImageWidth = CVL(INPUT$(4, FileH))
   ImageHeight = CVL(INPUT$(4, FileH))
-  IF SCREENHEIGHT > ImageHeight THEN SCREENHEIGHT = ImageHeight
-  Padding = ((LOF(FileH) - BITMAP) / ImageHeight) - ImageWidth
+  IF ScreenHeight > ImageHeight THEN ScreenHeight = ImageHeight
+  Padding = ((LOF(FileH) - BITMAPHEADERSIZE) / ImageHeight) - ImageWidth
  END IF
 
- Position = (LOF(FileH) - ((ImageWidth + Padding) * (YOffset + SCREENHEIGHT)))
- IF Position > BITMAP THEN SEEK FileH, Position ELSE SEEK FileH, BITMAP
+ Position = (LOF(FileH) - ((ImageWidth + Padding) * (YOffset + ScreenHeight)))
+ IF Position > BITMAPHEADERSIZE THEN
+  SEEK FileH, Position
+ ELSE
+  SEEK FileH, BITMAPHEADERSIZE
+ END IF
 
  DEF SEG = &HA000
  CurrentBank = 0
  SetVESABank CurrentBank
 
- FOR y = SCREENHEIGHT - 1 TO 0 STEP -1
+ FOR y = ScreenHeight - 1 TO 0 STEP -1
   IF Position > 0 AND LOC(FileH) < LOF(FileH) THEN
-   Row$ = INPUT$(ImageWidth + Padding, FileH)
+   Row = INPUT$(ImageWidth + Padding, FileH)
    FOR x = 0 TO ScreenWidth - 1
     Offset = CLNG(CLNG(y) * CLNG(ScreenWidth)) + CLNG(x)
     Bank = Offset \ &H10000
@@ -108,7 +120,7 @@ STATIC Padding
      CurrentBank = Bank
     END IF
     IF x + XOffset < ImageWidth AND y + YOffset < ImageHeight THEN
-     POKE Offset AND &HFFFF&, ASC(MID$(Row$, x + XOffset + 1, 1))
+     POKE Offset AND &HFFFF&, ASC(MID$(Row, x + XOffset + 1, 1))
     ELSE
      POKE Offset AND &HFFFF&, &H0
     END IF
@@ -128,113 +140,133 @@ STATIC Padding
  NEXT y
 END SUB
 
-SUB GetVESAInformation (VIDEOMODE, Information AS InformationType)
+SUB DisplayBitmapInformation (FileName AS STRING, ImageWidth AS LONG, ImageHeight AS LONG)
+ PRINT
+ PRINT " Bitmap: "; FileName
+ PRINT USING " X: #####"; x
+ PRINT USING " Y: #####"; y
+ PRINT USING " Width:  ##### pixels"; ImageWidth
+ PRINT USING " Height: ##### pixels"; ImageHeight
+ DO: LOOP WHILE INKEY$ = ""
+END SUB
+
+SUB DisplayHelp
+ PRINT
+ PRINT " SVGA_BMP v1.00 - by: Peter Swinkels, ***2025***"
+ PRINT
+ PRINT " Arrow keys     = Scroll."
+ PRINT " F1             = Display this help."
+ PRINT " Escape         = Quit."
+ PRINT " I              = Display information about the bitmap."
+ PRINT " 1-4/6-9        = Scroll the entire screen width/height."
+ PRINT " 5              = Move to the bitmap's center."
+ DO: LOOP WHILE INKEY$ = ""
+END SUB
+
+SUB GetVESAInformation (VideoMode AS INTEGER, Information AS VESAInformationStr)
 DIM Registers AS RegTypeX
 
  Registers.ax = &H4F01
- Registers.cx = VIDEOMODE
+ Registers.cx = VideoMode
  Registers.es = VARSEG(Information)
  Registers.di = VARPTR(Information)
  INTERRUPTX &H10, Registers, Registers
 END SUB
 
 SUB Main
-CONST VIDEOMODE = &H101
-DIM FileH
-DIM FileName$
+DIM FileH AS INTEGER
+DIM FileName AS STRING
 DIM ImageHeight AS LONG
 DIM ImageWidth AS LONG
-DIM Key$
-DIM Success
-DIM VESAInformation AS InformationType
-DIM x
-DIM y
+DIM KeyStroke AS STRING
+DIM Success AS INTEGER
+DIM VESAInformation AS VESAInformationStr
+DIM x AS INTEGER
+DIM y AS INTEGER
  
- IF NOT VESAPresent THEN
-  PRINT "No VESA found."
-  END
- END IF
-
- GetVESAInformation VIDEOMODE, VESAInformation
-
- ResetVideo
- COLOR 0, 7: PRINT " BITMAP FILES: " + SPACE$(65)
- COLOR 7, 0: FILES "*.bmp"
- PRINT STRING$(80, "=")
- LINE INPUT "SPECIFY BITMAP: ", FileName$
- IF LTRIM$(RTRIM$(FileName$)) = "" THEN EXIT SUB
- Success = SetVESAMode(VIDEOMODE)
- IF NOT Success THEN
-  PRINT "Could not initialize VESA."
-  END
- END IF
-
- FileH = OpenBinary(FileName$)
- SetPalette FileH
- x = 0
- y = 0
- DO
-  CLS
-  DisplayBitmap FileH, x, y, VESAInformation.XResolution, VESAInformation.YResolution, ImageWidth, ImageHeight
-  DO
-   Key$ = INKEY$
-  LOOP WHILE Key$ = ""
-  SELECT CASE Key$
-   CASE CHR$(0) + "H"
-    y = y - (VESAInformation.YResolution / 4)
-   CASE CHR$(0) + "P"
-    y = y + (VESAInformation.YResolution / 4)
-   CASE CHR$(0) + "K"
-    x = x - (VESAInformation.XResolution / 4)
-   CASE CHR$(0) + "M"
-    x = x + (VESAInformation.YResolution / 4)
-   CASE "1"
-    x = x - VESAInformation.XResolution
-    y = y + VESAInformation.YResolution
-   CASE "2"
-    y = y + VESAInformation.YResolution
-   CASE "3"
-    x = x + VESAInformation.XResolution
-    y = y + VESAInformation.YResolution
-   CASE "4"
-    x = x - VESAInformation.XResolution
-   CASE "6"
-    x = x + VESAInformation.XResolution
-   CASE "7"
-    x = x - VESAInformation.XResolution
-    y = y - VESAInformation.YResolution
-   CASE "8"
-    y = y - VESAInformation.YResolution
-   CASE "9"
-    x = x + VESAInformation.XResolution
-    y = y - VESAInformation.YResolution
-   CASE "i", "I"
-    ResetVideo
-    PRINT USING "X: ####"; x
-    PRINT USING "Y: ####"; y
-    PRINT USING "Width:  ####"; ImageWidth
-    PRINT USING "Height: #### "; ImageHeight
-    DO: LOOP WHILE INKEY$ = ""
-    Success = SetVESAMode(VIDEOMODE)
+ IF VESAPresent THEN
+  GetVESAInformation VESAVIDEOMODE, VESAInformation
+  ResetVideo
+  FileName = SelectBitmap$
+  IF NOT LTRIM$(RTRIM$(FileName)) = "" THEN
+   IF SetVESAMode(VESAVIDEOMODE) THEN
+    FileH = OpenBinary(FileName)
     SetPalette FileH
-   CASE CHR$(27)
-    ResetVideo
-    EXIT DO
-  END SELECT
-  IF x < 0 THEN x = 0
-  IF y < 0 THEN y = 0
- LOOP
- CLOSE FileH
+    x = 0
+    y = 0
+    DO
+     DisplayBitmap FileH, x, y, VESAInformation.XResolution, VESAInformation.YResolution, ImageWidth, ImageHeight
+     DO
+      KeyStroke = INKEY$
+     LOOP WHILE KeyStroke = ""
+     SELECT CASE KeyStroke
+      CASE CHR$(0) + "H"
+       y = y - (VESAInformation.YResolution / 4)
+      CASE CHR$(0) + "P"
+       y = y + (VESAInformation.YResolution / 4)
+      CASE CHR$(0) + "K"
+       x = x - (VESAInformation.XResolution / 4)
+      CASE CHR$(0) + "M"
+       x = x + (VESAInformation.YResolution / 4)
+      CASE CHR$(0) + ";"
+       ResetVideo
+       DisplayHelp
+       Success = SetVESAMode(VESAVIDEOMODE)
+       SetPalette FileH
+      CASE "1"
+       x = x - VESAInformation.XResolution
+       y = y + VESAInformation.YResolution
+      CASE "2"
+       y = y + VESAInformation.YResolution
+      CASE "3"
+       x = x + VESAInformation.XResolution
+       y = y + VESAInformation.YResolution
+      CASE "4"
+       x = x - VESAInformation.XResolution
+      CASE "5"
+       x = ImageWidth / 2
+       y = ImageHeight / 2
+      CASE "6"
+       x = x + VESAInformation.XResolution
+      CASE "7"
+       x = x - VESAInformation.XResolution
+       y = y - VESAInformation.YResolution
+      CASE "8"
+       y = y - VESAInformation.YResolution
+      CASE "9"
+       x = x + VESAInformation.XResolution
+       y = y - VESAInformation.YResolution
+      CASE "i", "I"
+       ResetVideo
+       DisplayBitmapInformation FileName, ImageWidth, ImageHeight
+       Success = SetVESAMode(VESAVIDEOMODE)
+       SetPalette FileH
+      CASE CHR$(27)
+       ResetVideo
+       EXIT DO
+     END SELECT
+     IF x < 0 THEN x = 0
+     IF y < 0 THEN y = 0
+    LOOP
+    CLOSE FileH
+   ELSE
+    PRINT "Could not initialize VESA."
+   END IF
+  END IF
+ ELSE
+  PRINT "No VESA found."
+ END IF
 END SUB
 
-FUNCTION OpenBinary (FileName$)
-DIM FileH
+FUNCTION OpenBinary (FileName AS STRING)
+DIM FileH AS INTEGER
 
  FileH = FREEFILE
- OPEN FileName$ FOR INPUT AS FileH: CLOSE FileH
- OPEN FileName$ FOR BINARY AS FileH
+ OPEN FileName FOR INPUT LOCK READ WRITE AS FileH
+ CLOSE FileH
+ OPEN FileName FOR BINARY LOCK READ WRITE AS FileH
 
-OpenBinary = FileH
+ OpenBinary = FileH
 END FUNCTION
 
 SUB ResetVideo
@@ -247,28 +279,48 @@ SUB ResetVideo
  CLS
 END SUB
 
-SUB SetPalette (FileH)
-CONST COLORS = 55
+FUNCTION SelectBitmap$
+DIM FileName AS STRING
+
+ FileName = COMMAND$
+ IF FileName = "" THEN
+  COLOR 0, 7
+  PRINT " BITMAP FILES: " + SPACE$(65)
+  COLOR 7, 0
+  FILES "*.BMP"
+  PRINT STRING$(80, "=")
+  LINE INPUT "SPECIFY BITMAP: ", FileName
+ END IF
+
+ IF NOT FileName = "" THEN
+  FileName = UCASE$(LTRIM$(RTRIM$(FileName)))
+  IF NOT RIGHT$(FileName, 4) = ".BMP" THEN FileName = FileName + ".BMP"
+ END IF
+
+ SelectBitmap$ = FileName
+END FUNCTION
+
+SUB SetPalette (FileH AS INTEGER)
 DIM Blue AS LONG
 DIM ColorIndex
 DIM Green AS LONG
-DIM Null$
+DIM Null AS STRING
 DIM Red AS LONG
 
- SEEK FileH, COLORS
+ SEEK FileH, BITMAPPALETTE
  FOR ColorIndex = 0 TO 255
   Blue = ASC(INPUT$(1, FileH)) \ &H4
   Green = ASC(INPUT$(1, FileH)) \ &H4
   Red = ASC(INPUT$(1, FileH)) \ &H4
-  OUT 968, ColorIndex
-  OUT 969, Red
-  OUT 969, Green
-  OUT 969, Blue
-  Null$ = INPUT$(1, FileH)
+  OUT &H3C8, ColorIndex
+  OUT &H3C9, Red
+  OUT &H3C9, Green
+  OUT &H3C9, Blue
+  Null = INPUT$(1, FileH)
  NEXT ColorIndex
 END SUB
 
-SUB SetVESABank (Bank)
+SUB SetVESABank (Bank AS INTEGER)
 DIM Registers AS RegTypeX
 
  Registers.ax = &H4F05
@@ -277,18 +329,18 @@ DIM Registers AS RegTypeX
  INTERRUPTX &H10, Registers, Registers
 END SUB
 
-FUNCTION SetVESAMode (VIDEOMODE)
+FUNCTION SetVESAMode (VideoMode AS INTEGER)
 DIM Registers AS RegTypeX
 
  Registers.ax = &H4F02
- Registers.bx = VIDEOMODE
+ Registers.bx = VideoMode
  INTERRUPTX &H10, Registers, Registers
 
-SetVESAMode = (Registers.ax = &H4F)
+ SetVESAMode = (Registers.ax = &H4F)
 END FUNCTION
 
 FUNCTION VESAPresent
-DIM Information AS VGAInfoType
+DIM Information AS VBEInformationStr
 DIM Registers AS RegTypeX
 
  Registers.ax = &H4F00
@@ -296,6 +348,6 @@ DIM Registers AS RegTypeX
  Registers.di = VARPTR(Information)
  INTERRUPTX &H10, Registers, Registers
  
-VESAPresent = (Registers.ax = &H4F)
+ VESAPresent = (Registers.ax = &H4F)
 END FUNCTION
 
