@@ -66,7 +66,7 @@ DECLARE FUNCTION SelectBitmap$ ()
 DECLARE FUNCTION SetVESAMode (VideoMode AS INTEGER)
 DECLARE FUNCTION VESAPresent ()
 DECLARE SUB DisplayBitmap (FileH AS INTEGER, XOffset AS INTEGER, YOffset AS INTEGER, ScreenWidth AS INTEGER, ScreenHeight AS INTEGER, ImageWidth AS LONG, ImageHeight AS LONG)
-DECLARE SUB DisplayBitmapInformation (FileName AS STRING, ImageWidth AS LONG, ImageHeight AS LONG)
+DECLARE SUB DisplayBitmapInformation (FileName AS STRING, ImageWidth AS LONG, ImageHeight AS LONG, x AS INTEGER, y AS INTEGER)
 DECLARE SUB DisplayHelp ()
 DECLARE SUB GetVESAInformation (VideoMode AS INTEGER, Information AS VESAInformationStr)
 DECLARE SUB INTERRUPTX (intnum AS INTEGER, inreg AS RegTypeX, outreg AS RegTypeX)
@@ -140,7 +140,7 @@ STATIC Padding AS INTEGER
  NEXT y
 END SUB
 
-SUB DisplayBitmapInformation (FileName AS STRING, ImageWidth AS LONG, ImageHeight AS LONG)
+SUB DisplayBitmapInformation (FileName AS STRING, ImageWidth AS LONG, ImageHeight AS LONG, x AS INTEGER, y AS INTEGER)
  PRINT
  PRINT " Bitmap: "; FileName
  PRINT USING " X: #####"; x
@@ -238,7 +238,7 @@ DIM y AS INTEGER
        y = y - VESAInformation.YResolution
       CASE "i", "I"
        ResetVideo
-       DisplayBitmapInformation FileName, ImageWidth, ImageHeight
+       DisplayBitmapInformation FileName, ImageWidth, ImageHeight, x, y
        Success = SetVESAMode(VESAVIDEOMODE)
        SetPalette FileH
       CASE CHR$(27)
