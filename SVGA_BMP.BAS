@@ -1,4 +1,3 @@
-DECLARE SUB DisplayHelp ()
 DEFINT A-Z
 
 CONST BITMAPDIMENSIONS = 19
@@ -68,6 +67,7 @@ DECLARE FUNCTION SetVESAMode (VideoMode AS INTEGER)
 DECLARE FUNCTION VESAPresent ()
 DECLARE SUB DisplayBitmap (FileH AS INTEGER, XOffset AS INTEGER, YOffset AS INTEGER, ScreenWidth AS INTEGER, ScreenHeight AS INTEGER, ImageWidth AS LONG, ImageHeight AS LONG)
 DECLARE SUB DisplayBitmapInformation (FileName AS STRING, ImageWidth AS LONG, ImageHeight AS LONG)
+DECLARE SUB DisplayHelp ()
 DECLARE SUB GetVESAInformation (VideoMode AS INTEGER, Information AS VESAInformationStr)
 DECLARE SUB INTERRUPTX (intnum AS INTEGER, inreg AS RegTypeX, outreg AS RegTypeX)
 DECLARE SUB Main ()
